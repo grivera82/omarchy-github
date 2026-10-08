@@ -39,6 +39,24 @@ Panel {
   readonly property var market: svc ? svc.market : []
   readonly property var mtot: svc ? svc.marketTotals : ({})
   readonly property int unseen: svc ? svc.unseen : 0
+  // What changed since the panel was last closed (see look_deltas in the daemon).
+  readonly property var look: st.sinceLook || ({ since: 0 })
+  readonly property var lookD: look.deltas || ({})
+  function lookChips() {
+    var d = lookD, out = []
+    function add(n, one, many, tab, glyph) { if (n) out.push({ text: (n > 0 ? "+" : "−") + fmt(Math.abs(n)) + " " + (Math.abs(n) === 1 ? one : many), tab: tab, glyph: glyph || "" }) }
+    add(d.cloners, "cloner", "cloners", "repos", cloneGlyph)
+    add(d.visitors, "visitor", "visitors", "repos", eyeGlyph)
+    add(d.copies, "install copy", "install copies", "plugins", copyGlyph)
+    add(d.hearts, "heart", "hearts", "plugins", heartGlyph)
+    add(d.stars, "star", "stars", "repos", starGlyph)
+    add(d.forks, "fork", "forks", "repos", forkGlyph)
+    add(d.followers, "follower", "followers", "activity", followGlyph)
+    add(d.contributions, "contribution", "contributions", "overview", ghGlyph)
+    add(d.pageViews, "marketplace view", "marketplace views", "plugins", eyeGlyph)
+    if (look.events) out.push({ text: plural(look.events, "new event"), tab: "activity", glyph: bellGlyph })
+    return out
+  }
   readonly property bool hasData: !!user.login
 
   readonly property color fg: root.bar ? root.bar.foreground : Color.foreground
@@ -635,6 +653,66 @@ Panel {
     Column {
       width: parent ? parent.width : 0
       spacing: Style.space(12)
+
+      // Since you last looked
+      Card {
+        width: parent.width
+        Column {
+          width: parent.width
+          spacing: Style.space(8)
+          readonly property var chips: root.lookChips()
+          Text {
+            width: parent.width
+            text: root.look.since ? "SINCE YOU LAST LOOKED · " + root.agoText(root.look.since).toUpperCase() : "SINCE YOU LAST LOOKED"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.letterSpacing: 0.6
+          }
+          Flow {
+            visible: parent.chips.length > 0
+            width: parent.width
+            spacing: Style.space(6)
+            Repeater {
+              model: parent.parent.chips
+              Rectangle {
+                required property var modelData
+                implicitWidth: chipRow.implicitWidth + Style.space(16)
+                implicitHeight: chipRow.implicitHeight + Style.space(8)
+                radius: height / 2
+                color: chipMouse.containsMouse ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.28) : Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.14)
+                border.width: 1
+                border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.5)
+                Row {
+                  id: chipRow
+                  anchors.centerIn: parent
+                  spacing: Style.space(5)
+                  Text { visible: modelData.glyph !== ""; text: modelData.glyph; color: Color.accent; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
+                  Text { text: modelData.text; color: root.fg; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true }
+                }
+                MouseArea {
+                  id: chipMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: { if (modelData.tab === "repos") root.repoSort = "traffic"; root.setTab(modelData.tab) }
+                }
+              }
+            }
+          }
+          Text {
+            visible: parent.chips.length === 0
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: root.look.since ? "Nothing new yet. Fresh numbers are loading, and GitHub updates traffic about once an hour."
+                                  : "From now on, this shows what changed since you last closed GitHub Pulse."
+            color: root.fg
+            opacity: 0.8
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
+        }
+      }
 
       Grid {
         id: tiles
@@ -1597,6 +1675,16 @@ Panel {
             font.pixelSize: Style.font.caption
           }
           Text {
+            readonly property int fresh: (root.look.repos || {})[row.r.name] || 0
+            visible: fresh > 0
+            anchors.verticalCenter: parent.verticalCenter
+            text: "+" + fresh + " new"
+            color: Color.accent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+          }
+          Text {
             visible: !!row.r.ci
             anchors.verticalCenter: parent.verticalCenter
             text: root.ciGlyph(row.r.ci)
@@ -2009,6 +2097,13 @@ Panel {
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
+            }
+            Pill {
+              readonly property int fresh: (root.look.plugins || {})[card.p.id] || 0
+              visible: fresh > 0
+              anchors.verticalCenter: parent.verticalCenter
+              text: "+" + fresh + " NEW"
+              tint: Color.accent
             }
             Pill {
               anchors.verticalCenter: parent.verticalCenter

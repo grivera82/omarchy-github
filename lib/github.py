@@ -799,6 +799,66 @@ class Engine:
             self.activity["seen"] = items[0]["t"]
             self.save("activity")
 
+    # ---- since you last looked
+    #
+    # A snapshot of cumulative counts is saved when the panel closes; the next
+    # open compares against it. Traffic uses daily uniques summed over every
+    # tracked day, which only grows (GitHub's 14-day totals also drop as old
+    # days roll off).
+
+    def look_metrics(self):
+        repos = [r for r in self.visible_repos() if not r["fork"]]
+        per_repo, cloners, visitors = {}, 0, 0
+        for r in repos:
+            days = (self.traffic.get(r["full"]) or {}).get("days") or {}
+            c = sum(v[3] for v in days.values())
+            per_repo[r["name"]] = c
+            cloners += c
+            visitors += sum(v[1] for v in days.values())
+        t = self.totals() if self.raw.get("overview") else {}
+        ov = self.raw.get("overview") or {}
+        latest = {pid: d[sorted(d)[-1]] for pid, d in (self.market.get("days") or {}).items() if d}
+        return {"t": int(time.time()), "cloners": cloners, "visitors": visitors,
+                "stars": t.get("stars", 0), "forks": t.get("forks", 0),
+                "followers": (ov.get("user") or {}).get("followers", 0),
+                "pageViews": sum(v[0] for v in latest.values()), "copies": sum(v[1] for v in latest.values()),
+                "hearts": sum(v[2] for v in latest.values()),
+                "repos": per_repo, "plugins": {pid: v[1] for pid, v in latest.items()},
+                "contrib": {d[0]: d[1] for d in ((ov.get("contrib") or {}).get("days") or [])[-60:]}}
+
+    def look_deltas(self):
+        then = self.known.get("lookCompare")
+        if not then:
+            return {"since": 0}
+        now = self.look_metrics()
+        deltas = {k: now[k] - then.get(k, 0) for k in
+                  ("cloners", "visitors", "stars", "forks", "followers", "pageViews", "copies", "hearts")}
+        first = min(then.get("contrib") or {"": 0})
+        deltas["contributions"] = sum(max(0, c - then["contrib"].get(day, 0))
+                                      for day, c in now["contrib"].items() if day >= first)
+        repos = {n: c - then["repos"][n] for n, c in now["repos"].items() if n in then.get("repos", {}) and c > then["repos"][n]}
+        plugins = {p: c - then["plugins"][p] for p, c in now["plugins"].items()
+                   if p in then.get("plugins", {}) and c > then["plugins"][p]}
+        events = sum(1 for i in self.activity["items"] if i["t"] > then["t"])
+        return {"since": then["t"], "deltas": deltas, "repos": repos, "plugins": plugins, "events": events}
+
+    def panel_opened(self):
+        """Compare against the last close, and fetch whatever is stale."""
+        self.known["lookCompare"] = self.known.get("look")
+        self.save("known")
+        self.mark_seen()
+        now = time.time()
+        for feed in ("overview", "inbox", "notifications", "stats"):
+            if now - self.fetched.get(feed, 0) > 60:
+                self.force.add(feed)
+        if now - self.fetched.get("traffic", 0) > 900:
+            self.force.add("traffic")      # GitHub refreshes traffic about hourly
+
+    def panel_closed(self):
+        if self.raw.get("overview"):
+            self.known["look"] = self.look_metrics()
+            self.save("known")
+
     # ---- feeds
 
     def fetch_overview(self):
@@ -1390,6 +1450,7 @@ class Engine:
             "config": self.config, "user": user, "avatar": avatar,
             "contrib": ov.get("contrib") or {}, "repos": repos, "totals": self.totals() if ov else {},
             "traffic": self.series(30), "starSeries": self.star_series(90),
+            "sinceLook": self.look_deltas() if ov else {"since": 0},
             "activity": items[:120], "unseen": sum(1 for i in items if i["t"] > seen), "seen": seen,
             "inbox": inbox, "notifications": notes,
             "market": market, "marketTotals": mtotals,
@@ -1452,9 +1513,12 @@ def daemon():
                 publish()
             elif cmd == "visible":
                 engine.ui_open = bool(msg.get("open"))
+                if not engine.ui_open:
+                    with engine.lock:
+                        engine.panel_closed()
             elif cmd == "seen":
                 with engine.lock:
-                    engine.mark_seen()
+                    engine.panel_opened()
             elif cmd == "config":
                 with engine.lock:
                     engine.set_config({k: v for k, v in msg.items() if k not in ("cmd", "id")})
