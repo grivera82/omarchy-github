@@ -301,7 +301,7 @@ Panel {
   // and their issue, PR and notification titles are left out.
   function statusSummary() {
     if (!svc) return { error: "GitHub Pulse isn't running" }
-    if (!hasData) return { error: st.error || "no data yet", status: st.status || "" }
+    if (!hasData) return { error: st.status === "auth" || st.status === "offline" ? st.error : "GitHub Pulse is still loading", status: st.status || "" }
     var privateRepos = {}
     repos.forEach(function(r) { if (r.private) privateRepos[r.full] = true })
     function item(i) {
