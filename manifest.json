@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "grivera.github",
+  "name": "GitHub Pulse",
+  "version": "1.0.0",
+  "author": "grivera",
+  "license": "MIT",
+  "description": "Your GitHub in the Omarchy bar: contribution heatmap and streaks, repo traffic with history past GitHub's 14 days, stars, forks and followers, your review queue, PR checks and notifications, plus marketplace views, installs and hearts for your Omarchy plugins. Alerts when something happens.",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "GitHub Pulse",
+    "description": "Contributions, repo traffic, stars, reviews and marketplace installs",
+    "category": "Developer Tools",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
