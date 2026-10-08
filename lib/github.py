@@ -718,6 +718,7 @@ class Engine:
         self.pending = []           # notifications gathered during one fetch
         self.retry_at = {}
         self.force = set()
+        self.manual = set()         # feeds a manual refresh is still waiting on
         self.errors = {}
         self.status = "starting" if not self.raw.get("overview") else "ok"
         self.error = ""
@@ -1226,6 +1227,14 @@ class Engine:
                 out.append(feed)
         return out
 
+    def refresh(self):
+        """Fetch everything now, except the catalog and feeds fetched in the last 30 s."""
+        now = time.time()
+        self.retry_at = {k: v for k, v in self.retry_at.items() if v > now + 600}
+        self.force.update(f for f in self.FEEDS if now - self.fetched.get(f, 0) > 30 and f != "catalog")
+        # Only what will actually run, so a rate-limited feed can't leave the spinner going.
+        self.manual = set(self.due(now)) & self.force
+
     def run(self, feed):
         self.force.discard(feed)
         try:
@@ -1255,6 +1264,7 @@ class Engine:
             self.retry_at[feed] = time.time() + 300
             if feed == "overview" and not self.raw.get("overview"):
                 self.status, self.error = "error", str(e)
+        self.manual.discard(feed)
         self.save_raw()
         self.flush_notifications()
 
@@ -1383,7 +1393,7 @@ class Engine:
             "activity": items[:120], "unseen": sum(1 for i in items if i["t"] > seen), "seen": seen,
             "inbox": inbox, "notifications": notes,
             "market": market, "marketTotals": mtotals,
-            "rate": self.gh.rate, "fetched": {k: int(v) for k, v in self.fetched.items() if v},
+            "refreshing": bool(self.manual), "rate": self.gh.rate, "fetched": {k: int(v) for k, v in self.fetched.items() if v},
             "trackingSince": sorted(hist)[0] if hist else "",
         }
 
@@ -1437,8 +1447,9 @@ def daemon():
         cmd, ok, err = msg.get("cmd"), True, None
         try:
             if cmd == "refresh":
-                engine.force.update(f for f in engine.FEEDS if time.time() - engine.fetched.get(f, 0) > 30 and f != "catalog")
-                engine.retry_at = {k: v for k, v in engine.retry_at.items() if v > time.time() + 600}
+                with engine.lock:
+                    engine.refresh()
+                publish()
             elif cmd == "visible":
                 engine.ui_open = bool(msg.get("open"))
             elif cmd == "seen":

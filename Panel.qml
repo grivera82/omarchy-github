@@ -62,6 +62,7 @@ Panel {
   readonly property string puzzleGlyph: String.fromCodePoint(0xF0431)
   readonly property string commentGlyph: String.fromCodePoint(0xF0182)
   readonly property string copyGlyph: String.fromCodePoint(0xF018F)
+  readonly property string refreshGlyph: String.fromCodePoint(0xF0450)
 
   property string tab: "overview"
   property string metric: "uclones"
@@ -69,6 +70,15 @@ Panel {
   property string activityFilter: "all"
   property string expanded: ""
   property real seenAtOpen: 0
+  // Spins for at least a moment after a click, then for as long as the daemon is fetching.
+  readonly property bool refreshing: !!st.refreshing || refreshFeedback.running
+  Timer { id: refreshFeedback; interval: 700 }
+
+  function refresh() {
+    if (!svc) return
+    svc.send("refresh")
+    refreshFeedback.restart()
+  }
 
   property double nowMs: Date.now()
   readonly property double nowSec: nowMs / 1000
@@ -295,7 +305,7 @@ Panel {
 
   function barPress(b) {
     if (b === Qt.RightButton) openUrl(inboxCount ? (notes.length ? "https://github.com/notifications" : "https://github.com/pulls/review-requested") : profileUrl())
-    else if (b === Qt.MiddleButton && svc) svc.send("refresh")
+    else if (b === Qt.MiddleButton) refresh()
     else toggle()
   }
 
@@ -349,7 +359,7 @@ Panel {
       }
       onTextKey: function(t) {
         if (/^[1-9]$/.test(t) && Number(t) <= root.tabs.length) root.setTab(root.tabs[Number(t) - 1].value)
-        else if (t === "r" && root.svc) root.svc.send("refresh")
+        else if (t === "r") root.refresh()
         else if (t === "o") root.openUrl(root.profileUrl())
         else if (t === "m" && root.svc && root.notes.length) root.svc.send("read")
       }
@@ -403,12 +413,38 @@ Panel {
               }
             }
             trailingControl: Component {
-              PanelActionButton {
-                iconText: root.openGlyph
-                tooltipText: "Open your profile (o)"
-                foreground: root.fg
-                fontFamily: root.fontFamily
-                onClicked: root.openUrl(root.profileUrl())
+              Row {
+                spacing: Style.space(2)
+                PanelActionButton {
+                  id: refreshButton
+                  tooltipText: root.refreshing ? "Refreshing…"
+                    : "Refresh (r)" + (root.st.fetched && root.st.fetched.overview ? " · updated " + root.agoText(root.st.fetched.overview) : "")
+                  foreground: root.fg
+                  fontFamily: root.fontFamily
+                  onClicked: root.refresh()
+                  Text {
+                    anchors.centerIn: parent
+                    text: root.refreshGlyph
+                    color: root.refreshing ? Color.accent : refreshButton._hot ? refreshButton.hoverColor : refreshButton.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: refreshButton.fontSize
+                    NumberAnimation on rotation {
+                      from: 0
+                      to: 360
+                      duration: 900
+                      loops: Animation.Infinite
+                      running: root.refreshing
+                      alwaysRunToEnd: true
+                    }
+                  }
+                }
+                PanelActionButton {
+                  iconText: root.openGlyph
+                  tooltipText: "Open your profile (o)"
+                  foreground: root.fg
+                  fontFamily: root.fontFamily
+                  onClicked: root.openUrl(root.profileUrl())
+                }
               }
             }
           }
@@ -963,7 +999,7 @@ Panel {
           fontFamily: root.fontFamily
           fontSize: Style.font.caption
           bordered: true
-          onClicked: if (root.svc) root.svc.send("refresh")
+          onClicked: root.refresh()
         }
       }
       Text {
