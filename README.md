@@ -45,6 +45,10 @@ Keys while the panel is open: `1`–`6` tabs, `←`/`→` change the metric, sor
 omarchy-shell grivera.github toggle                                  # open/close the panel (for a keybinding)
 ```
 
+## Status for scripts and voice assistants
+
+`omarchy-shell grivera.github status` prints a JSON summary: contributions and streak, traffic, top repos by cloners, your review queue and PRs, notifications, recent activity and marketplace numbers. Private repos are counted but never named, and their titles are left out. Voice assistants such as [Jarvis](https://github.com/grivera82/omarchy-jarvis) use it to answer questions. It only reads, and works while the widget is in the bar.
+
 ## API use
 
 GraphQL for your profile, repos and contributions (every 10 minutes, every 3 while the panel is open), plus the review/PR search (every 5 minutes). REST covers notifications (at GitHub's poll interval, with conditional requests that don't count against your limit) and traffic (hourly, 2–4 requests per repo). Stargazers, forks, followers and new issues are fetched only when a count changes. Marketplace stats refresh every 30 minutes, and the 13 MB catalog every 6 hours. A typical hour uses a few hundred of your 5,000 requests.

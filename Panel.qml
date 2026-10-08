@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import Quickshell
+import Quickshell.Io
 import Quickshell.Widgets
 import qs.Ui
 import qs.Commons
@@ -11,6 +12,19 @@ Panel {
   id: root
   moduleName: "grivera.github"
   ipcTarget: "grivera.github"
+  manageIpc: false
+
+  // Panel commands plus status(), which voice assistants (Jarvis) and scripts
+  // read: `omarchy-shell grivera.github status`.
+  IpcHandler {
+    target: root.ipcTarget
+    function open(): void { root.open() }
+    function close(): void { root.close() }
+    function show(): void { root.open() }
+    function hide(): void { root.close() }
+    function toggle(): void { root.toggle() }
+    function status(): string { return JSON.stringify(root.statusSummary()) }
+  }
 
   readonly property var svc: root.bar && root.bar.shell ? root.bar.shell.serviceFor("grivera.github") : null
   readonly property var st: svc ? svc.state : ({})
@@ -263,6 +277,76 @@ Panel {
     if (st.status === "offline") bits.push("OFFLINE")
     if (st.status === "limited") bits.push("RATE LIMITED")
     return bits.join("  ·  ")
+  }
+
+  // A compact summary for status(). Private repos are counted but never named,
+  // and their issue, PR and notification titles are left out.
+  function statusSummary() {
+    if (!svc) return { error: "GitHub Pulse isn't running" }
+    if (!hasData) return { error: st.error || "no data yet", status: st.status || "" }
+    var privateRepos = {}
+    repos.forEach(function(r) { if (r.private) privateRepos[r.full] = true })
+    function item(i) {
+      if (i.private || privateRepos[i.repo]) return { repo: "a private repo", kind: i.kind }
+      var o = { ref: i.repo + "#" + i.number, title: i.title, kind: i.kind, updated: agoText(i.updated) }
+      if (i.author) o.author = i.author
+      if (i.ci) o.checks = i.ci.toLowerCase()
+      if (i.review) o.review = i.review.toLowerCase().replace(/_/g, " ")
+      if (i.draft) o.draft = true
+      return o
+    }
+    var t = totals, c = contrib, u = user
+    var top = repos.filter(function(r) { return !r.fork && !r.private && r.traffic })
+      .sort(function(a, b) { return b.traffic.uclones - a.traffic.uclones || b.traffic.uviews - a.traffic.uviews })
+      .slice(0, 6)
+      .map(function(r) {
+        return { repo: r.name, uniqueCloners14d: r.traffic.uclones, clones14d: r.traffic.clones,
+                 visitors14d: r.traffic.uviews, views14d: r.traffic.views, stars: r.stars, forks: r.forks,
+                 openIssues: r.issues, openPRs: r.prs, lastPush: agoText(r.pushedAt), checks: (r.ci || "").toLowerCase() }
+      })
+    var out = {
+      user: u.login, name: u.name, updated: agoText((st.fetched || {}).overview),
+      contributions: { today: c.today || 0, thisWeek: c.week || 0, lastWeek: c.prevWeek || 0, last30Days: c.month || 0,
+                       last12Months: c.total || 0, commits12Months: c.commits || 0, pullRequests12Months: c.prs || 0,
+                       issues12Months: c.issues || 0, reviews12Months: c.reviews || 0,
+                       currentStreakDays: c.streak || 0, longestStreakDays: c.longest || 0,
+                       bestDay: c.best ? c.best.date + " (" + c.best.count + ")" : "" },
+      profile: { followers: u.followers || 0, followersThisWeek: u.followersWeek || 0, following: u.following || 0,
+                 ownedRepos: u.repos || 0, privateRepos: Object.keys(privateRepos).length },
+      repoTotals: { stars: t.stars || 0, starsThisWeek: t.starsWeek || 0, forks: t.forks || 0,
+                    openIssues: t.issues || 0, openPRs: t.prs || 0 },
+      traffic14Days: { uniqueCloners: t.uclones || 0, clones: t.clones || 0, visitors: t.uviews || 0, views: t.views || 0,
+                       note: "unique counts are summed per repo; GitHub updates traffic about hourly" },
+      topReposByCloners: top,
+      inbox: {
+        reviewRequests: (inbox.reviews || []).map(item), reviewRequestCount: inbox.reviewsCount || 0,
+        yourOpenPRs: (inbox.mine || []).map(item), yourOpenPRCount: inbox.mineCount || 0,
+        assignedToYou: (inbox.assigned || []).map(item),
+        unreadNotifications: notes.length,
+        notifications: notes.slice(0, 8).map(function(n) {
+          return n.private ? { repo: "a private repo", type: n.type }
+                           : { repo: n.repo, title: n.title, type: n.type, reason: n.reason, updated: agoText(n.updated) }
+        })
+      },
+      recentActivity: activity.filter(function(a) { return !privateRepos[a.repo] }).slice(0, 10)
+        .map(function(a) { return { when: agoText(a.t), what: a.text } }),
+      newEventsSinceLastLook: unseen
+    }
+    if (market.length) {
+      out.omarchyMarketplace = {
+        totals: { pageViews: mtot.views, installCopies: mtot.copies, hearts: mtot.hearts,
+                  installCopiesThisWeek: mtot.copiesWeek, heartsThisWeek: mtot.heartsWeek, historySince: mtot.since },
+        plugins: market.map(function(p) {
+          var r = repoByName(p.repoName)
+          return { name: p.name, id: p.id, version: p.version, pageViews: p.views, installCopies: p.copies,
+                   installCopiesToday: p.copiesToday, installCopiesThisWeek: p.copiesWeek, hearts: p.hearts,
+                   rankByInstalls: p.rank && p.rank.copies ? p.rank.copies + " of " + p.rank.of : "",
+                   verified: p.verification === "verified" && p.upToDate,
+                   uniqueCloners14d: r && r.traffic ? r.traffic.uclones : null }
+        })
+      }
+    }
+    return out
   }
 
   function tooltip() {
