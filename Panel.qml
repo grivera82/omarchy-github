@@ -101,6 +101,57 @@ Panel {
   property string repoSort: "traffic"
   property string activityFilter: "all"
   property string expanded: ""
+  // `?` swaps the hover tooltips for a card that explains every number.
+  property bool explain: false
+
+  // What each number means: tooltips, and the `?` card. Plain text.
+  readonly property var tips: ({
+    today: "Contributions GitHub counted today: commits to a repo's default branch, pull requests, issues and reviews. Underneath: the last 7 days, today included.",
+    streak: "Days in a row with at least one contribution. Today doesn't break it until the day is over. Underneath: your longest streak in the past year.",
+    cloners: "Unique cloners over GitHub's last 14 days, counted per repo and added up, so someone who cloned three of your repos counts three times. Installing a plugin clones its repo, so this is the closest thing to real installs. Bots and CI count too. Underneath: all clones, repeats included.",
+    visitors: "Unique visitors to your repo pages on github.com over the last 14 days, counted per repo and added up. Underneath: all page views.",
+    copies: "Times someone copied an install command from your listings on omarchyplugins.com. A copy isn't always an install, and installs from a repo link aren't counted. Underneath: change over the last 7 days.",
+    hearts: "Hearts people gave your listings on omarchyplugins.com. Underneath: change over the last 7 days.",
+    heartsOverview: "Hearts people gave your listings on omarchyplugins.com. Underneath: views of your listing pages.",
+    views: "Views of your listing pages on omarchyplugins.com. Underneath: change over the last 7 days.",
+    pluginCloners: "Unique cloners of your plugin repos over GitHub's last 14 days, counted per repo and added up. Installing a plugin clones its repo, so this also counts installs the marketplace can't see, plus bots and CI.",
+    week: "“+N wk” is the gain over the last 7 days. “Tracking from today” means Pulse has no week-old numbers to compare with yet.",
+    verified: "The marketplace verified this listing at your newest commit.",
+    updateUnverified: "Your repo has commits newer than the one the marketplace verified. File a verify request for the newest commit to get it verified.",
+    unverified: "The marketplace hasn't verified this listing."
+  })
+  // A tile's tooltip without its "Underneath:" sentence, for the plugin cards' smaller numbers.
+  function cardTip(t, weekly) {
+    return t.replace(/ Underneath:.*$/, "") + (weekly ? " \u201c+N wk\u201d is the gain over the last 7 days." : "")
+  }
+  function rankTip(r) {
+    return "Rank by install copies among the " + root.fmt(r.of || 0) + " marketplace listings with stats (#1 is the most copied). "
+      + "Top N% is the share of listings at or above this rank."
+  }
+  function badgeText(p) {
+    if (p.verification === "verified" && p.upToDate) return "VERIFIED"
+    if (p.hasVerified) return "UPDATE UNVERIFIED"
+    return String(p.verification || p.status || "").toUpperCase()
+  }
+  function badgeTip(p) {
+    var t = root.badgeText(p)
+    return t === "VERIFIED" ? root.tips.verified : t === "UPDATE UNVERIFIED" ? root.tips.updateUnverified
+      : t === "UNVERIFIED" ? root.tips.unverified : ""
+  }
+  function glossary(tab) {
+    var t = root.tips
+    if (tab === "plugins") return [
+      { term: "page views", text: t.views }, { term: "install copies", text: t.copies },
+      { term: "hearts", text: t.hearts }, { term: "cloners · 14d", text: t.pluginCloners },
+      { term: "#N by installs", text: root.rankTip({ of: root.market.length && root.market[0].rank ? root.market[0].rank.of : 0 }) },
+      { term: "+N wk", text: t.week },
+      { term: "VERIFIED", text: t.verified }, { term: "UPDATE UNVERIFIED", text: t.updateUnverified }, { term: "UNVERIFIED", text: t.unverified }
+    ]
+    var g = [{ term: "today", text: t.today }, { term: "day streak", text: t.streak },
+             { term: "cloners · 14d", text: t.cloners }, { term: "visitors · 14d", text: t.visitors }]
+    if (root.market.length) g.push({ term: "installs", text: t.copies }, { term: "hearts", text: t.heartsOverview })
+    return g
+  }
   property real seenAtOpen: 0
   // Spins for at least a moment after a click, then for as long as the daemon is fetching.
   readonly property bool refreshing: !!st.refreshing || refreshFeedback.running
@@ -445,6 +496,7 @@ Panel {
         root.svc.send("seen")
       } else {
         root.expanded = ""
+        root.explain = false
       }
     }
 
@@ -464,6 +516,7 @@ Panel {
         else if (t === "r") root.refresh()
         else if (t === "o") root.openUrl(root.profileUrl())
         else if (t === "m" && root.svc && root.notes.length) root.svc.send("read")
+        else if (t === "?") root.explain = !root.explain
       }
 
       Flickable {
@@ -581,6 +634,51 @@ Panel {
               color: root.fg
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
+            }
+          }
+
+          Card {
+            id: glossaryCard
+            visible: root.explain && root.hasData && (root.tab === "overview" || root.tab === "plugins")
+            width: parent.width
+            Column {
+              width: parent.width
+              spacing: Style.space(8)
+              Text {
+                width: parent.width
+                text: "WHAT THESE NUMBERS MEAN  ·  ? to hide"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+              }
+              Repeater {
+                model: glossaryCard.visible ? root.glossary(root.tab) : []
+                Column {
+                  required property var modelData
+                  width: parent.width
+                  spacing: Style.space(1)
+                  Text {
+                    width: parent.width
+                    textFormat: Text.PlainText
+                    text: modelData.term
+                    color: root.fg
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                    font.bold: true
+                  }
+                  Text {
+                    width: parent.width
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    text: modelData.text
+                    color: root.fg
+                    opacity: 0.8
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
+                }
+              }
             }
           }
 
@@ -725,6 +823,7 @@ Panel {
           glyph: root.ghGlyph
           value: root.fmt(root.contrib.today || 0)
           label: "today"
+          tip: root.tips.today
           sub: root.fmt(root.contrib.week || 0) + " this week"
         }
         StatTile {
@@ -733,6 +832,7 @@ Panel {
           glyphColor: root.contrib.streak ? "#f0883e" : root.dim
           value: String(root.contrib.streak || 0)
           label: "day streak"
+          tip: root.tips.streak
           sub: "best " + (root.contrib.longest || 0)
         }
         StatTile {
@@ -740,6 +840,7 @@ Panel {
           glyph: root.cloneGlyph
           value: root.fmt(root.totals.uclones || 0)
           label: "cloners · 14d"
+          tip: root.tips.cloners
           sub: root.fmt(root.totals.clones || 0) + " clones"
           onClicked: { root.metric = "uclones"; root.repoSort = "traffic"; root.setTab("repos") }
         }
@@ -748,6 +849,7 @@ Panel {
           glyph: root.eyeGlyph
           value: root.fmt(root.totals.uviews || 0)
           label: "visitors · 14d"
+          tip: root.tips.visitors
           sub: root.fmt(root.totals.views || 0) + " views"
           onClicked: { root.metric = "uviews"; root.repoSort = "traffic"; root.setTab("repos") }
         }
@@ -775,6 +877,7 @@ Panel {
           glyph: root.market.length ? root.puzzleGlyph : root.pullGlyph
           value: root.market.length ? root.fmt(root.mtot.copies || 0) : root.fmt(root.inbox.mineCount || 0)
           label: root.market.length ? "installs" : "open PRs"
+          tip: root.market.length ? root.tips.copies : ""
           sub: root.market.length ? root.weekSub(root.mtot.copiesWeek || 0, root.mtot.since) : root.fmt(root.inbox.reviewsCount || 0) + " to review"
           subColor: root.market.length && (root.mtot.copiesWeek || 0) > 0 ? root.go : root.dim
           onClicked: root.setTab(root.market.length ? "plugins" : "inbox")
@@ -785,6 +888,7 @@ Panel {
           glyphColor: root.market.length ? root.pink : root.fg
           value: root.market.length ? root.fmt(root.mtot.hearts || 0) : root.fmt(root.totals.issues || 0)
           label: root.market.length ? "hearts" : "open issues"
+          tip: root.market.length ? root.tips.heartsOverview : ""
           sub: root.market.length ? root.fmt(root.mtot.views || 0) + " views" : root.fmt(root.totals.prs || 0) + " PRs on yours"
           onClicked: root.setTab(root.market.length ? "plugins" : "repos")
         }
@@ -1057,9 +1161,9 @@ Panel {
         width: parent.width
         spacing: Style.space(8)
         readonly property real tileW: (width - 3 * spacing) / 4
-        StatTile { width: parent.tileW; glyph: root.eyeGlyph; value: root.fmt(root.mtot.views || 0); label: "page views"; sub: root.weekSub(root.mtot.viewsWeek || 0, root.mtot.since); subColor: (root.mtot.viewsWeek || 0) > 0 ? root.go : root.dim }
-        StatTile { width: parent.tileW; glyph: root.copyGlyph; value: root.fmt(root.mtot.copies || 0); label: "install copies"; sub: root.weekSub(root.mtot.copiesWeek || 0, root.mtot.since); subColor: (root.mtot.copiesWeek || 0) > 0 ? root.go : root.dim }
-        StatTile { width: parent.tileW; glyph: root.heartGlyph; glyphColor: root.pink; value: root.fmt(root.mtot.hearts || 0); label: "hearts"; sub: root.weekSub(root.mtot.heartsWeek || 0, root.mtot.since); subColor: (root.mtot.heartsWeek || 0) > 0 ? root.go : root.dim }
+        StatTile { width: parent.tileW; glyph: root.eyeGlyph; value: root.fmt(root.mtot.views || 0); label: "page views"; tip: root.tips.views; sub: root.weekSub(root.mtot.viewsWeek || 0, root.mtot.since); subColor: (root.mtot.viewsWeek || 0) > 0 ? root.go : root.dim }
+        StatTile { width: parent.tileW; glyph: root.copyGlyph; value: root.fmt(root.mtot.copies || 0); label: "install copies"; tip: root.tips.copies; sub: root.weekSub(root.mtot.copiesWeek || 0, root.mtot.since); subColor: (root.mtot.copiesWeek || 0) > 0 ? root.go : root.dim }
+        StatTile { width: parent.tileW; glyph: root.heartGlyph; glyphColor: root.pink; value: root.fmt(root.mtot.hearts || 0); label: "hearts"; tip: root.tips.hearts; sub: root.weekSub(root.mtot.heartsWeek || 0, root.mtot.since); subColor: (root.mtot.heartsWeek || 0) > 0 ? root.go : root.dim }
         StatTile {
           width: parent.tileW
           glyph: root.cloneGlyph
@@ -1069,6 +1173,7 @@ Panel {
             return root.fmt(n)
           }
           label: "cloners · 14d"
+          tip: root.tips.pluginCloners
           sub: "real installs"
         }
       }
@@ -1173,7 +1278,7 @@ Panel {
           var rl = root.st.rate || {}
           return "Signed in through " + src + (a.scopes && a.scopes.length ? " · scopes: " + a.scopes.join(", ") : "") + "."
             + (rl.graphql ? " GraphQL " + root.fmt(rl.graphql.remaining) + "/" + root.fmt(rl.graphql.limit) + " left." : "")
-            + "\nKeys: 1–" + root.tabs.length + " tabs · ←/→ metric, sort or filter · o profile · m mark notifications read · r refresh"
+            + "\nKeys: 1–" + root.tabs.length + " tabs · ←/→ metric, sort or filter · o profile · m mark notifications read · r refresh · ? explain the numbers"
         }
         color: root.dim
         font.family: root.fontFamily
@@ -1262,6 +1367,16 @@ Panel {
     }
   }
 
+  // PanelToolTip (plain text) that wraps instead of growing one long line.
+  component Tip: PanelToolTip {
+    delay: 500
+    width: Math.min(implicitWidth, Style.space(300))
+    // ToolTip centres itself by implicitWidth, the unwrapped line, so place it by the real width.
+    x: parent ? (parent.width - width) / 2 : 0
+    y: parent ? -height - Style.space(4) : 0
+    Component.onCompleted: contentItem.wrapMode = Text.WordWrap
+  }
+
   component Pill: Rectangle {
     id: pill
     property string text: ""
@@ -1291,6 +1406,7 @@ Panel {
     property string label: ""
     property string sub: ""
     property color subColor: root.dim
+    property string tip: ""
     signal clicked()
     readonly property bool clickable: tileMouse.enabled
     implicitHeight: tileCol.implicitHeight + Style.space(16)
@@ -1350,6 +1466,10 @@ Panel {
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onClicked: tile.clicked()
+    }
+    Tip {
+      visible: tileMouse.containsMouse && tile.tip !== "" && !root.explain
+      text: tile.tip
     }
   }
 
@@ -2107,9 +2227,14 @@ Panel {
             }
             Pill {
               anchors.verticalCenter: parent.verticalCenter
-              text: card.p.verification === "verified" ? (card.p.upToDate ? "VERIFIED" : "UPDATE UNVERIFIED") : String(card.p.verification || card.p.status || "").toUpperCase()
-              tint: card.p.verification === "verified" && card.p.upToDate ? root.go : root.warn
+              text: root.badgeText(card.p)
+              tint: text === "VERIFIED" ? root.go : root.warn
               visible: text !== ""
+              HoverHandler { id: badgeHover }
+              Tip {
+                visible: badgeHover.hovered && text !== "" && !root.explain
+                text: root.badgeTip(card.p)
+              }
             }
           }
           Text {
@@ -2123,6 +2248,11 @@ Panel {
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
+            HoverHandler { id: rankHover }
+            Tip {
+              visible: rankHover.hovered && !!card.rank.copies && !root.explain
+              text: root.rankTip(card.rank)
+            }
           }
         }
         BarChart {
@@ -2137,10 +2267,10 @@ Panel {
       }
       Row {
         spacing: Style.space(14)
-        Metric { glyph: root.eyeGlyph; n: card.p.views || 0; delta: card.p.viewsWeek || 0; label: "views" }
-        Metric { glyph: root.copyGlyph; n: card.p.copies || 0; delta: card.p.copiesWeek || 0; label: "copies" }
-        Metric { glyph: root.heartGlyph; tint: root.pink; n: card.p.hearts || 0; delta: card.p.heartsWeek || 0; label: "hearts" }
-        Metric { visible: !!card.repo && !!card.repo.traffic; glyph: root.cloneGlyph; n: card.repo && card.repo.traffic ? card.repo.traffic.uclones : 0; delta: 0; label: "cloners · 14d" }
+        Metric { glyph: root.eyeGlyph; n: card.p.views || 0; delta: card.p.viewsWeek || 0; label: "views"; tip: root.cardTip(root.tips.views, true) }
+        Metric { glyph: root.copyGlyph; n: card.p.copies || 0; delta: card.p.copiesWeek || 0; label: "copies"; tip: root.cardTip(root.tips.copies, true) }
+        Metric { glyph: root.heartGlyph; tint: root.pink; n: card.p.hearts || 0; delta: card.p.heartsWeek || 0; label: "hearts"; tip: root.cardTip(root.tips.hearts, true) }
+        Metric { visible: !!card.repo && !!card.repo.traffic; glyph: root.cloneGlyph; n: card.repo && card.repo.traffic ? card.repo.traffic.uclones : 0; delta: 0; label: "cloners · 14d"; tip: root.tips.pluginCloners }
       }
     }
   }
@@ -2151,7 +2281,13 @@ Panel {
     property int n: 0
     property int delta: 0
     property string label: ""
+    property string tip: ""
     spacing: Style.space(4)
+    HoverHandler { id: metricHover }
+    Tip {
+      visible: metricHover.hovered && parent.tip !== "" && !root.explain
+      text: parent.tip
+    }
     Text { anchors.verticalCenter: parent.verticalCenter; text: parent.glyph; color: parent.tint; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
     Text { anchors.verticalCenter: parent.verticalCenter; text: root.fmt(parent.n); color: root.fg; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; font.bold: true }
     Text { anchors.verticalCenter: parent.verticalCenter; text: parent.label; color: root.dim; font.family: root.fontFamily; font.pixelSize: Style.font.caption }

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "grivera.github",
   "name": "GitHub Pulse",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "grivera",
   "license": "MIT",
   "description": "Your GitHub in the Omarchy bar: contribution heatmap and streaks, repo traffic with history past GitHub's 14 days, stars, forks and followers, your review queue, PR checks and notifications, plus marketplace views, installs and hearts for your Omarchy plugins. Alerts when something happens.",

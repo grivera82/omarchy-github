@@ -35,7 +35,7 @@ rm -rf ~/.cache/grivera-github ~/.local/state/grivera-github   # optional: histo
 - **Plugins:** appears when the [Omarchy plugin marketplace](https://omarchyplugins.com) lists a repo you own. Each listing shows its views, install-command copies and hearts with weekly changes, a daily-copies sparkline, rank by installs, and verification state ("update unverified" when your latest commit hasn't been verified yet). Unique cloners from GitHub traffic count real installs, since `omarchy plugin add` clones the repo.
 - **Alerts:** stars, followers, forks, new issues and PRs, review requests, CI results, approvals and merges, and marketplace hearts are on by default. Install copies, new cloners, every GitHub notification and an evening streak reminder are off by default. Clicking an alert opens the related page. Bursts of the same kind are grouped into one alert.
 
-Keys while the panel is open: `1`–`6` tabs, `←`/`→` change the metric, sort or filter, `j`/`k` scroll, `o` opens your profile, `m` marks notifications read, `r` refreshes, `Esc` closes.
+Keys while the panel is open: `1`–`6` tabs, `←`/`→` change the metric, sort or filter, `j`/`k` scroll, `o` opens your profile, `m` marks notifications read, `r` refreshes, `?` explains every number on the Overview and Plugins tabs, `Esc` closes. Hovering a number shows the same explanation.
 
 ## CLI
 

@@ -730,6 +730,8 @@ class Engine:
         for feed in INTERVALS:
             if feed not in ("catalog", "traffic"):
                 self.fetched[feed] = 0
+        if any("hasVerified" not in l for l in (self.market.get("listings") or {}).values()):
+            self.fetched["catalog"] = 0
 
     # ---- persistence
 
@@ -1083,7 +1085,9 @@ class Engine:
         login = self.login.lower()
         if not login:
             return
-        data, etag = fetch_public(CATALOG_URL, self.market.get("etag"), timeout=120)
+        # Listings saved before a field was added are fetched again in full.
+        stale = any("hasVerified" not in l for l in (self.market.get("listings") or {}).values())
+        data, etag = fetch_public(CATALOG_URL, None if stale else self.market.get("etag"), timeout=120)
         if data is None:
             return
         mine = {}
@@ -1097,6 +1101,8 @@ class Engine:
                     "category": p.get("category") or "", "tags": p.get("tags") or [],
                     "verification": p.get("verificationStatus") or "", "status": p.get("status") or "",
                     "upToDate": bool(p.get("verificationCommit")) and p.get("verificationCommit") == p.get("upstreamObservedCommit"),
+                    # Verified at an older commit: the catalog then says "unverified", the site "update unverified".
+                    "hasVerified": bool(p.get("verificationCommit")),
                     "listedAt": parse_ts(p.get("listedAt")), "accent": p.get("accent") or "", "initials": p.get("initials") or "",
                 }
         self.market["listings"] = mine
